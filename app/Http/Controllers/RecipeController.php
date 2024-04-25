@@ -31,16 +31,35 @@ class RecipeController extends Controller
         return view('home', compact('recipes', 'popular'));
     }
     
-    public function index()
+    public function index(Request $request)
     {
-        $recipes = Recipe::select('recipes.id', 'recipes.title', 'recipes.description', 'recipes.created_at', 'recipes.image', 'users.name')
+        $filters = $request->all();
+        //dd($filters);
+        $query = Recipe::query()->select('recipes.id', 'recipes.title', 'recipes.description', 'recipes.created_at', 'recipes.image', 'users.name', \DB::raw('AVG(reviews.rating) as rating'))
             ->join('users', 'users.id', '=', 'recipes.user_id')
-            ->orderBy('recipes.created_at', 'desc')
-            ->get();
+            ->leftjoin('reviews', 'reviews.recipe_id', '=', 'recipes.id')
+            ->groupBy('recipes.id')
+            ->orderBy('recipes.created_at', 'desc');
+        
+        if(!empty($filters)){
+            // カテゴリが選択された場合
+            if(!empty($filters['categories'])){
+                $query->whereIn('recipes.category_id', $filters['categories']);
+            }
+            // 評価が選択された場合
+            if(!empty($filters['rating'])){
+                $query->havingRaw('AVG(reviews.rating) >= ?', [$filters['rating']]);
+            }// レシピ名の曖昧検索の場合
+            if(!empty($filters['title'])){
+                $query->where('recipes.title', 'like', '%'.$filters['title'].'%');
+            }
+        }
+        $recipes = $query->paginate(5);
+        //dd($recipes);
 
         $categories = Category::all();
 
-        return view('recipes.index', compact('recipes', 'categories'));
+        return view('recipes.index', compact('recipes', 'categories', 'filters'));
     }
 
     /**
