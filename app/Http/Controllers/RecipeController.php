@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\Request;
 use App\Models\Recipe;
 use App\Models\Category;
@@ -67,7 +70,8 @@ class RecipeController extends Controller
      */
     public function create()
     {
-        //
+        $categories = Category::all();
+        return view('recipes.create', compact('categories'));
     }
 
     /**
@@ -75,18 +79,30 @@ class RecipeController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        $posts = $request->all();
+        //dd($posts);
+        $image = $request->file('image');
+        $path = Storage::disk('s3')->putFile('recipe', $image, 'public'); // s3にアップロード
+        $url = Storage::disk('s3')->url($path); // s3のURLを取得
+        
+        Recipe::insert([
+            'id' => Str::uuid(),
+            'title'=> $posts['title'],
+            'description' => $posts['description'],
+            'category_id' => $posts['category'],
+            'image' => $url, // DBにs3のURLを保存
+            'user_id' => Auth::id(),
+        ]);
     }
 
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(string $id) //show(Recipe $recipe) メソッドインジェクション
     {
-        $recipe = Recipe::with(['ingredients', 'steps', 'reviews', 'user'])
+        $recipe = Recipe::with(['ingredients', 'steps', 'reviews.user', 'user'])
             ->where('recipes.id', $id)
-            ->get();
-        $recipe = $recipe[0];
+            ->first();
         $recipe_recorde = Recipe::find($id);
         $recipe_recorde->increment('views');
         
