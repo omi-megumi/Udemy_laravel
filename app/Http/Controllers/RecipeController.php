@@ -143,9 +143,13 @@ class RecipeController extends Controller
         $recipe_recorde = Recipe::find($id);
         $recipe_recorde->increment('views');
         
-        //dd($recipe);
-
-        return view('recipes.show', compact('recipe'));
+        // レシピの投稿者とログインユーザが同じかどうか判定する。
+        $is_my_recipe = false;
+        if(Auth::check() && (Auth::id() === $recipe['user_id'])){
+            $is_my_recipe = true;
+        }
+        
+        return view('recipes.show', compact('recipe', 'is_my_recipe'));
     }
 
     /**
@@ -153,7 +157,12 @@ class RecipeController extends Controller
      */
     public function edit(string $id)
     {
-        //
+        $recipe = Recipe::with(['ingredients', 'steps', 'reviews.user', 'user'])
+            ->where('recipes.id', $id)
+            ->first()->toArray();
+        $categories = Category::all();
+
+        return view('recipes.edit', compact('recipe', 'categories'));
     }
 
     /**
@@ -161,7 +170,43 @@ class RecipeController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
+        $posts = $request->all();
+        try{
+            DB::beginTransaction();
+            Recipe::where('id', $id)->update([
+                'title' => $posts['title'],
+                'description' => $posts['description'],
+                'category_id' => $posts['category_id'],
+            ]);
+            // すでに登録されている材料と手順を削除してから、新しいものを登録する。
+            Ingredient::where('recipe_id', $id)->delete();
+            Step::where('recipe_id', $id)->delete();
+            
+            $ingredients = [];
+            foreach($posts['ingredients'] as $key => $ingredient){
+                $ingredients[$key] = [
+                    'recipe_id' => $id,
+                    'name' => $ingredient['name'],
+                    'quantity' => $ingredient['quantity'],
+                ];
+            }
+            Ingredient::insert($ingredients);
+
+            $steps = [];
+            foreach($posts['steps'] as $key => $step){
+                $steps[$key] = [
+                    'recipe_id' => $id,
+                    'step_number' => $key + 1,
+                    'description' => $step
+                ];
+            }
+            STEP::insert($steps);
+            DB::commit();
+            } catch(\Throwable $th){
+                DB::rollBack();
+                \log::debug(print_r($th->getMessage(), true));
+                throw $th;
+            }
     }
 
     /**

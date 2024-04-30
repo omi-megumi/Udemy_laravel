@@ -35,6 +35,11 @@
             </div>
         </div>
 
+        @if ($is_my_recipe)
+            <a href="{{ route('recipe.edit', ['id' => $recipe['id']]) }}" class="block w-2/12 p-4 my-4 mx-auto bg-white
+             rounded text-center text-green-500 border border-green-500 hover:bg-green-500 hover:text-white">編集する</a>
+        @endif
+
         {{-- レビュー --}}
         <div class="w-10/12 p-4 mx-auto bg-white rouded">
             <h4 class="text-2xl font-bold mb-2">レビュー</h4>
