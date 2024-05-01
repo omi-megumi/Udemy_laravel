@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use App\Http\Requests\RecipeCreateRequest;
+use App\Http\Requests\RecipeUpdateRequest;
 use App\Models\Category;
 use App\Models\Ingredient;
 use Illuminate\Http\Request;
@@ -148,8 +149,11 @@ class RecipeController extends Controller
         if(Auth::check() && (Auth::id() === $recipe['user_id'])){
             $is_my_recipe = true;
         }
-        
-        return view('recipes.show', compact('recipe', 'is_my_recipe'));
+        $is_reviewed = false;
+        if(Auth::check()){
+            $is_reviewed = $recipe->reviews->contains('user_id', Auth::id());
+        }
+        return view('recipes.show', compact('recipe', 'is_my_recipe', 'is_reviewed'));
     }
 
     /**
@@ -160,6 +164,9 @@ class RecipeController extends Controller
         $recipe = Recipe::with(['ingredients', 'steps', 'reviews.user', 'user'])
             ->where('recipes.id', $id)
             ->first()->toArray();
+        if(!Auth::check() || (Auth::id() !== $recipe['user_id'])){
+            abort(403);
+        }
         $categories = Category::all();
 
         return view('recipes.edit', compact('recipe', 'categories'));
@@ -168,16 +175,25 @@ class RecipeController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(RecipeUpdateRequest $request, string $id)
     {
         $posts = $request->all();
+        //画像の分岐
+        $update_array = [
+            'title' => $posts['title'],
+            'description' => $posts['description'],
+            'category_id' => $posts['category_id'],
+        ];
+        if($request->hasFile('image')){
+            $image = $request->file('image');
+            $path = Storage::disk('s3')->putFile('recipe', $image, 'public');
+            $url = Storage::disk('s3')->url($path);
+            $update_array['image'] = $url;
+        }
+
         try{
             DB::beginTransaction();
-            Recipe::where('id', $id)->update([
-                'title' => $posts['title'],
-                'description' => $posts['description'],
-                'category_id' => $posts['category_id'],
-            ]);
+            Recipe::where('id', $id)->update($update_array);
             // すでに登録されている材料と手順を削除してから、新しいものを登録する。
             Ingredient::where('recipe_id', $id)->delete();
             Step::where('recipe_id', $id)->delete();
@@ -207,6 +223,8 @@ class RecipeController extends Controller
                 \log::debug(print_r($th->getMessage(), true));
                 throw $th;
             }
+            flash()->success('レシピを更新しました！');
+            return redirect()->route('recipe.show', ['id' => $id]);
     }
 
     /**
@@ -214,6 +232,9 @@ class RecipeController extends Controller
      */
     public function destroy(string $id)
     {
-        //
+        Recipe::where('id', $id)->delete();
+        flash()->warning('レシピを削除しました!');
+
+        return redirect()->route('home');
     }
 }
